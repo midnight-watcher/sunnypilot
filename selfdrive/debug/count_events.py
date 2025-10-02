@@ -41,7 +41,9 @@ if __name__ == "__main__":
           alerts.append((t, at))
     elif msg.which() == 'pandaStates':
       if ignition_off is None:
-        ign = any(ps.ignitionCan if ps.ignitionCanPriority else ps.ignitionLine for ps in msg.pandaStates)
+        ign = any(
+          ps.ignitionCan if ps.ignitionSource else ps.ignitionLine
+            for ps in msg.pandaStates)
         if not ign:
           ignition_off = msg.logMonoTime
           break

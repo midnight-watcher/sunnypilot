@@ -226,7 +226,7 @@ def hardware_thread(end_event, hw_queue) -> None:
       # Set ignition based on any panda connected
       # Prioritize ignitionCan if available
       onroad_conditions["ignition"] = any(
-        ps.ignitionCan if ps.ignitionCanPriority else ps.ignitionLine
+        ps.ignitionCan if ps.ignitionSource else ps.ignitionLine
         for ps in pandaStates if ps.pandaType != log.PandaState.PandaType.unknown)
 
       pandaState = pandaStates[0]
