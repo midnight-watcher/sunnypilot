@@ -152,7 +152,7 @@ void can_recv(std::vector<Panda *> &pandas, PubMaster *pm) {
   }
 }
 
-void fill_panda_state(cereal::PandaState::Builder &ps, cereal::PandaState::PandaType hw_type, const health_t &health) {
+void fill_panda_state(cereal::PandaState::Builder &ps, cereal::PandaState::PandaType hw_type, const health_t &health, bool ignition_can_priority) {
   ps.setVoltage(health.voltage_pkt);
   ps.setCurrent(health.current_pkt);
   ps.setUptime(health.uptime_pkt);
@@ -160,6 +160,7 @@ void fill_panda_state(cereal::PandaState::Builder &ps, cereal::PandaState::Panda
   ps.setSafetyRxInvalid(health.safety_rx_invalid_pkt);
   ps.setIgnitionLine(health.ignition_line_pkt);
   ps.setIgnitionCan(health.ignition_can_pkt);
+  ps.setIgnitionCanPriority(ignition_can_priority);
   ps.setControlsAllowed(health.controls_allowed_pkt);
   ps.setTxBufferOverflow(health.tx_buffer_overflow_pkt);
   ps.setRxBufferOverflow(health.rx_buffer_overflow_pkt);
@@ -211,6 +212,10 @@ std::optional<bool> send_panda_states(PubMaster *pm, const std::vector<Panda *> 
   bool ignition_local = false;
   const uint32_t pandas_cnt = pandas.size();
 
+  // Track previous IgnitionCan state for priority logic (per panda)
+  static std::map<std::string, bool> prev_ignition_can_map;
+  static std::map<std::string, bool> ignition_can_priority_map;
+
   // build msg
   MessageBuilder msg;
   auto evt = msg.initEvent();
@@ -255,7 +260,44 @@ std::optional<bool> send_panda_states(PubMaster *pm, const std::vector<Panda *> 
       health.ignition_line_pkt = 0;
     }
 
-    ignition_local |= ((health.ignition_line_pkt != 0) || (health.ignition_can_pkt != 0)) && !always_offroad;
+    // Implement ignition priority logic
+    std::string panda_serial = panda->hw_serial();
+    bool current_ignition_can = (health.ignition_can_pkt != 0);
+    bool current_ignition_line = (health.ignition_line_pkt != 0);
+
+    // Initialize maps if this is a new panda
+    if (prev_ignition_can_map.find(panda_serial) == prev_ignition_can_map.end()) {
+      prev_ignition_can_map[panda_serial] = current_ignition_can;
+      ignition_can_priority_map[panda_serial] = false;
+    }
+
+    bool prev_ignition_can = prev_ignition_can_map[panda_serial];
+    bool& ignition_can_priority = ignition_can_priority_map[panda_serial];
+
+    // Check if IgnitionCan has priority (was previously True)
+    if (current_ignition_can) {
+      ignition_can_priority = true;
+    } else if (prev_ignition_can && !current_ignition_can) {
+      // IgnitionCan transitioned from True to False, maintain priority
+      ignition_can_priority = true;
+    } else if (!ignition_can_priority && current_ignition_line) {
+      // IgnitionCan never had priority, use IgnitionLine
+      ignition_can_priority = false;
+    }
+
+    // Determine final ignition state based on priority
+    bool panda_ignition = false;
+    if (ignition_can_priority) {
+      panda_ignition = current_ignition_can;
+    } else {
+      panda_ignition = current_ignition_line;
+    }
+
+    // Update previous state for next iteration
+    prev_ignition_can_map[panda_serial] = current_ignition_can;
+
+    // Apply to ignition_local with always_offroad check
+    ignition_local |= panda_ignition && !always_offroad;
 
     pandaStates.push_back(health);
   }
@@ -285,7 +327,7 @@ std::optional<bool> send_panda_states(PubMaster *pm, const std::vector<Panda *> 
     }
 
     auto ps = pss[i];
-    fill_panda_state(ps, panda->hw_type, health);
+    fill_panda_state(ps, panda->hw_type, health, ignition_can_priority_map[panda->hw_serial()]);
 
     auto cs = std::array{ps.initCanState0(), ps.initCanState1(), ps.initCanState2()};
     for (uint32_t j = 0; j < PANDA_CAN_CNT; j++) {

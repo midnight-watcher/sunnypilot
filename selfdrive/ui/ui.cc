@@ -46,7 +46,8 @@ void update_state(UIState *s) {
       if (scene.pandaType != cereal::PandaState::PandaType::UNKNOWN) {
         scene.ignition = false;
         for (const auto& pandaState : pandaStates) {
-          scene.ignition |= pandaState.getIgnitionLine() || pandaState.getIgnitionCan();
+          // Use priority-aware ignition state
+          scene.ignition |= pandaState.getIgnitionCan() if pandaState.getIgnitionCanPriority() else pandaState.getIgnitionLine();
         }
       }
     }

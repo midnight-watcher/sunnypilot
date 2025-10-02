@@ -98,7 +98,10 @@ class UIState:
         self.panda_type = panda_states[0].pandaType
         # Check ignition status across all pandas
         if self.panda_type != log.PandaState.PandaType.unknown:
-          self.ignition = any(state.ignitionLine or state.ignitionCan for state in panda_states)
+          # Use priority-aware ignition state
+          self.ignition = any(
+            state.ignitionCan if state.ignitionCanPriority else state.ignitionLine for state in panda_states)
+
     elif self.sm.frame - self.sm.recv_frame["pandaStates"] > 5 * rl.get_fps():
       self.panda_type = log.PandaState.PandaType.unknown
 

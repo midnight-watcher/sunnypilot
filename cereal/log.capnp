@@ -578,6 +578,7 @@ struct PandaState @0xa7649e2575e4591e {
   txBufferOverflow @8 :UInt32;
   pandaType @10 :PandaType;
   ignitionCan @13 :Bool;
+  ignitionCanPriority @37 :Bool;
   faultStatus @15 :FaultStatus;
   powerSaveEnabled @16 :Bool;
   uptime @17 :UInt32;
